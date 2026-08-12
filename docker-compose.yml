@@ -19,9 +19,10 @@ services:
   omp:
     image: ${OMP_IMAGE:-omp-standalone:17.2.15}
     build:
-      # Replace with the git form to build without a local clone:
-      #   context: https://github.com/<you>/oh-my-pi.git#<branch>:docker/omp-standalone
-      context: .
+      # Defaults to the public repo, so this file plus a .env is everything a
+      # new machine needs — no clone required. Set OMP_BUILD_CONTEXT=. in .env
+      # on a machine where you want to build from local edits instead.
+      context: ${OMP_BUILD_CONTEXT:-https://github.com/shaakz/omp-docker.git}
       args:
         OMP_VERSION: ${OMP_VERSION:-17.2.15}
     container_name: ${OMP_NAME:-omp}
