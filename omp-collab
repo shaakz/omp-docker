@@ -56,9 +56,19 @@ extract_link() {
     printf '%s' "$link"
 }
 
-for _ in $(seq 1 20); do
+# When the command palette has a suggestion highlighted, the first Enter accepts
+# the completion rather than submitting — the text stays in the input box. Send
+# one more Enter if the command is still sitting there, but only once, so we
+# never submit a stray empty prompt.
+resent=0
+for i in $(seq 1 20); do
     sleep 0.5
-    link="$(extract_link "$(tmux capture-pane -p -t "$TARGET")")"
+    pane="$(tmux capture-pane -p -t "$TARGET")"
+    if [ "$resent" -eq 0 ] && [ "$i" -ge 3 ] && grep -q '╰─ */collab' <<<"$pane"; then
+        tmux send-keys -t "$TARGET" Enter
+        resent=1
+    fi
+    link="$(extract_link "$pane")"
     if [ -n "$link" ]; then
         printf 'join from another machine:\n  omp join "%s"\n\n' "$link"
         printf 'or in a browser:\n  https://my.omp.sh/#%s\n' "$link"

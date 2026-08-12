@@ -18,17 +18,39 @@ docker compose exec -u omp omp tmux attach -t omp
 
 Detach with `ctrl-b d` — the agent keeps running. Reattach any time.
 
-`docker compose` only finds the stack when run from this directory. To drive it
-from anywhere, use `omp-ctl` (symlink it onto your PATH once per machine):
+## omp-ctl
+
+`docker compose` only finds the stack from the stack directory. `omp-ctl` drives
+the container from anywhere — install it standalone, no clone needed (handy when
+the stack itself is deployed by Dockhand or another manager):
 
 ```sh
-ln -s "$PWD/omp-ctl" ~/.local/bin/omp-ctl
-
-omp-ctl attach          # attach to the TUI
-omp-ctl collab          # print a join link
-omp-ctl status          # link + participants
-omp-ctl up | down | restart | logs | shell | ps
+mkdir -p ~/.local/bin
+curl -fsSL -o ~/.local/bin/omp-ctl \
+  https://raw.githubusercontent.com/shaakz/omp-docker/main/omp-ctl
+chmod +x ~/.local/bin/omp-ctl
 ```
+
+On Debian/Ubuntu `~/.local/bin` is added to PATH by `~/.profile` only if it
+existed at login, so after creating it either log out and back in or run
+`export PATH="$HOME/.local/bin:$PATH"` for the current shell.
+
+```sh
+omp-ctl attach          # attach to the TUI (ctrl-b d to detach)
+omp-ctl collab [view]   # print a join link
+omp-ctl status          # link + participants
+omp-ctl shell | logs | restart | stop | start | ps
+omp-ctl up | down       # these two need the compose file
+```
+
+Everything except `up`/`down` talks to the running container by name, so no
+checkout and no particular working directory is required. `up`/`down` look for
+`docker-compose.yml` in `$OMP_STACK_DIR`, next to the script, the current
+directory, `~/omp-docker`, then `/data/stacks/omp-standalone` and
+`/opt/stacks/omp-standalone`. If you renamed the container, set `OMP_NAME`.
+
+There is no host-side install for `omp-collab` — it lives inside the image and
+`omp-ctl` invokes it there.
 
 ## How it fits together
 

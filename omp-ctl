@@ -1,35 +1,92 @@
 #!/usr/bin/env bash
-# Host-side wrapper so the stack can be driven from any directory.
+# Host-side control for the omp container. Works standalone — install with:
 #
-# Optional: symlink onto your PATH once per machine —
-#   ln -s ~/oh-my-pi/docker/omp-standalone/omp-ctl ~/.local/bin/omp-ctl
+#   mkdir -p ~/.local/bin
+#   curl -fsSL -o ~/.local/bin/omp-ctl \
+#     https://raw.githubusercontent.com/shaakz/omp-docker/main/omp-ctl
+#   chmod +x ~/.local/bin/omp-ctl
 #
 #   omp-ctl attach          # attach to the agent TUI (ctrl-b d to detach)
 #   omp-ctl collab [view]   # print a join link
 #   omp-ctl status          # collab link + participants
-#   omp-ctl up | down | restart | logs | shell
+#   omp-ctl shell | logs | restart | stop | start | ps
+#   omp-ctl up | down       # these two need the compose file (see below)
+#
+# Everything except up/down talks to the running container by name, so no
+# checkout, no compose file, and no particular working directory is required.
+# Override the container name with OMP_NAME if you changed it.
 set -euo pipefail
 
-# Resolve through symlinks so PATH installs still find the compose file.
-SELF="${BASH_SOURCE[0]}"
-while [ -L "$SELF" ]; do
-    dir="$(cd -P "$(dirname "$SELF")" && pwd)"
-    SELF="$(readlink "$SELF")"
-    [[ $SELF != /* ]] && SELF="$dir/$SELF"
-done
-STACK_DIR="$(cd -P "$(dirname "$SELF")" && pwd)"
+CONTAINER="${OMP_NAME:-omp}"
+SESSION="${OMP_TMUX_SESSION:-omp}"
+USER_IN_CONTAINER=omp
 
-# An array, not a function: `exec` cannot run a shell function.
-DC=(docker compose -f "${STACK_DIR}/docker-compose.yml")
+die() { echo "omp-ctl: $*" >&2; exit 1; }
 
-case "${1:-attach}" in
-    attach)  exec "${DC[@]}" exec -u omp omp tmux attach -t "${OMP_TMUX_SESSION:-omp}" ;;
-    collab)  shift; exec "${DC[@]}" exec -u omp omp omp-collab "$@" ;;
-    status)  exec "${DC[@]}" exec -u omp omp omp-collab status ;;
-    shell)   exec "${DC[@]}" exec -u omp omp bash ;;
-    up)      exec "${DC[@]}" up -d ;;
-    down)    exec "${DC[@]}" down ;;
-    restart) exec "${DC[@]}" restart ;;
-    logs)    shift; exec "${DC[@]}" logs "$@" ;;
-    *)       exec "${DC[@]}" "$@" ;;
+running() { [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null)" = "true" ]; }
+
+require_running() {
+    running || die "container '${CONTAINER}' is not running (set OMP_NAME if you renamed it)"
+}
+
+# Only `up`/`down` need the compose file. Look where it plausibly lives: an
+# explicit override, next to this script when run from a checkout, then the
+# usual clone and stack-manager locations (Dockhand keeps stacks in
+# /data/stacks/<name>, Portainer-style tools in /opt/stacks/<name>).
+find_stack_dir() {
+    local self=${BASH_SOURCE[0]} dir candidates=()
+    while [ -L "$self" ]; do
+        dir=$(cd -P "$(dirname "$self")" && pwd); self=$(readlink "$self")
+        [[ $self != /* ]] && self="$dir/$self"
+    done
+    candidates+=(
+        "${OMP_STACK_DIR:-}"
+        "$(cd -P "$(dirname "$self")" && pwd)"
+        "$PWD"
+        "$HOME/omp-docker"
+        "/data/stacks/omp-standalone"
+        "/opt/stacks/omp-standalone"
+    )
+    for dir in "${candidates[@]}"; do
+        [ -n "$dir" ] && [ -f "$dir/docker-compose.yml" ] && { printf '%s' "$dir"; return 0; }
+    done
+    return 1
+}
+
+compose() {
+    local dir
+    dir=$(find_stack_dir) || die "no docker-compose.yml found. Set OMP_STACK_DIR=/path/to/stack, or run this from the stack directory."
+    docker compose -f "${dir}/docker-compose.yml" "$@"
+}
+
+cmd=${1:-attach}
+[ $# -gt 0 ] && shift || true
+
+case "$cmd" in
+    attach)
+        require_running
+        exec docker exec -it -u "$USER_IN_CONTAINER" "$CONTAINER" tmux attach -t "$SESSION" ;;
+    collab)
+        require_running
+        exec docker exec -u "$USER_IN_CONTAINER" "$CONTAINER" omp-collab "$@" ;;
+    status)
+        require_running
+        exec docker exec -u "$USER_IN_CONTAINER" "$CONTAINER" omp-collab status ;;
+    shell)
+        require_running
+        exec docker exec -it -u "$USER_IN_CONTAINER" "$CONTAINER" bash ;;
+    logs)
+        exec docker logs "$@" "$CONTAINER" ;;
+    restart|stop|start)
+        exec docker "$cmd" "$CONTAINER" ;;
+    ps)
+        exec docker ps -a --filter "name=^/${CONTAINER}$" ;;
+    up)
+        exec compose up -d "$@" ;;
+    down)
+        exec compose down "$@" ;;
+    -h|--help|help)
+        sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *)
+        exec compose "$cmd" "$@" ;;
 esac
