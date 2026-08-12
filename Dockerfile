@@ -11,6 +11,9 @@ FROM oven/bun:1.3.14-slim
 ARG OMP_VERSION=17.2.15
 
 # git      — utils/git.ts guards on $which("git") then spawns it
+# gh       — omp has no git auth of its own (on failure it literally says "run
+#            `gh auth login`"), and gh's device-code flow is the only browser
+#            login that works from a headless container
 # tmux     — long-lived TUI that survives a dropped exec/ssh connection
 # util-linux — setpriv, to drop root without pulling in gosu
 # python3  — the python REPL tool (set PI_PY=0 to skip it)
@@ -18,7 +21,7 @@ ARG OMP_VERSION=17.2.15
 # @oh-my-pi/pi-natives) and the native shell bundles jaq.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates curl git less openssh-client procps \
+        ca-certificates curl gh git less openssh-client procps \
         python3 python3-venv tini tmux util-linux \
     && rm -rf /var/lib/apt/lists/*
 
@@ -34,11 +37,14 @@ RUN bun install -g "@oh-my-pi/pi-coding-agent@${OMP_VERSION}" \
 # HOME must NOT be /workspace: cli/startup-cwd.ts silently relocates the
 # project dir to a temp dir when cwd == $HOME, which would leave the agent
 # working somewhere invisible from the host.
+# GH_CONFIG_DIR points into the state volume: $HOME itself is image-local, so a
+# token in the default ~/.config/gh would be lost on every rebuild/redeploy.
 ENV HOME=/home/omp \
     TMPDIR=/home/omp/tmp \
     BUN_INSTALL_CACHE_DIR=/home/omp/.cache/bun \
     PI_BASH_NO_LOGIN=1 \
-    OMP_STATE_DIR=/home/omp/.omp
+    OMP_STATE_DIR=/home/omp/.omp \
+    GH_CONFIG_DIR=/home/omp/.omp/gh
 
 # procmgr.ts runs `bash -l -c` by default; there is no login profile here,
 # hence PI_BASH_NO_LOGIN above. bun chmod/chowns its cache root, so

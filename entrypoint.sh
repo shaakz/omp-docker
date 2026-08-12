@@ -45,6 +45,22 @@ git config --global --add safe.directory '*' 2>/dev/null || true
 [ -n "${GIT_AUTHOR_NAME:-}" ] && git config --global user.name "${GIT_AUTHOR_NAME}"
 [ -n "${GIT_AUTHOR_EMAIL:-}" ] && git config --global user.email "${GIT_AUTHOR_EMAIL}"
 
+# Route HTTPS git auth through gh. This is what `gh auth setup-git` writes, but
+# it writes it to ~/.gitconfig, which lives in the image layer and is therefore
+# lost on every recreate — so apply it here instead. Harmless before you log in:
+# git simply gets no credential back.
+mkdir -p "${GH_CONFIG_DIR:-$HOME/.omp/gh}"
+if command -v gh >/dev/null 2>&1; then
+    for host in github.com gist.github.com; do
+        git config --global --replace-all "credential.https://${host}.helper" "!gh auth git-credential"
+    done
+    if gh auth status >/dev/null 2>&1; then
+        log "gh: authenticated ($(gh api user --jq .login 2>/dev/null || echo 'unknown user')) — git push over HTTPS will work"
+    else
+        log "gh: not logged in — run 'omp-ctl shell' then 'gh auth login --web' (token persists in the state volume)"
+    fi
+fi
+
 # ---------------------------------------------------------------------------
 # models.yml, templated from the environment on every boot so that changing the
 # model is a .env edit + `docker compose up -d`, never an image rebuild.

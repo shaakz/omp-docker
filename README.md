@@ -118,6 +118,39 @@ speak the same collab protocol version — so keep `OMP_VERSION` the same on bot
 
 Alternative path, no relay: `ssh <host> -t 'docker exec -u omp -it omp tmux attach -t omp'`.
 
+## Git / GitHub access
+
+omp has no git auth of its own — it shells out to `git` and `gh`, and when auth
+fails it just says "run `gh auth login`". The image ships `gh` and wires the
+HTTPS credential helper to it on every boot, so you only need to log in once per
+machine:
+
+```sh
+omp-ctl shell
+gh auth login --web     # prints a one-time code; approve it in a browser
+exit
+```
+
+The token is written to `$GH_CONFIG_DIR` = `/home/omp/.omp/gh`, which lives in
+the state volume, so it survives rebuilds and redeploys. (`gh auth setup-git`
+is not needed — the entrypoint applies the same credential-helper config each
+boot, because `~/.gitconfig` is in the image layer and would otherwise be lost.)
+
+After that, the agent can `git clone`/`pull`/`push` over HTTPS and use `gh pr
+create` on its own. `omp-ctl logs` reports auth state on every start:
+
+```
+[omp-entrypoint] gh: authenticated (shaakz) — git push over HTTPS will work
+[omp-entrypoint] gh: not logged in — run 'omp-ctl shell' then 'gh auth login --web'
+```
+
+**Scope warning.** The agent runs in yolo mode with `bash`, so it can read this
+token (`gh auth token`) and act as you on **every repo the grant covers** — a
+normal `gh` OAuth login is account-wide. If you want the agent limited to
+specific repositories, skip the browser login and set `GH_TOKEN` in `.env` to a
+fine-grained PAT scoped to just those repos with an expiry; the same credential
+helper picks it up. Deploy keys are narrower still, but rule out the GitHub API.
+
 ## Replicating across machines
 
 A new machine needs **two files and nothing else** — no clone, no registry:
