@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Start (or re-print) the collab session in the running TUI and echo the join
+# link, without needing to attach and type.
+#
+#   docker compose exec -u omp omp omp-collab          # full control
+#   docker compose exec -u omp omp omp-collab view     # read-only
+#   docker compose exec -u omp omp omp-collab status   # participants
+#   docker compose exec -u omp omp omp-collab stop
+#
+# The room key lives only in the host process's memory, so every container
+# restart invalidates the previous link — run this again after one.
+set -euo pipefail
+
+SESSION="${OMP_TMUX_SESSION:-omp}"
+TARGET="${SESSION}:agent"
+MODE="${1:-}"
+
+if ! tmux has-session -t "$SESSION" 2>/dev/null; then
+    echo "no tmux session '${SESSION}' — is the container still starting?" >&2
+    exit 1
+fi
+
+# With no client attached the pane is 80 columns and the join link wraps across
+# lines, which would defeat the match below. Widen for the capture, then hand
+# sizing back to whatever client attaches next.
+restore_width() { tmux set-option -t "$SESSION" window-size latest 2>/dev/null || true; }
+trap restore_width EXIT
+tmux set-option -t "$SESSION" window-size manual
+tmux resize-window -t "$TARGET" -x 220 -y 50 2>/dev/null || true
+sleep 1
+
+# The TUI is a full-screen app: type the command, then Enter as a separate
+# keystroke so the command palette resolves first.
+tmux send-keys -t "$TARGET" "/collab${MODE:+ $MODE}"
+sleep 1
+tmux send-keys -t "$TARGET" Enter
+
+# Give the relay handshake time to complete before reading the pane.
+for _ in $(seq 1 20); do
+    sleep 0.5
+    pane="$(tmux capture-pane -p -t "$TARGET")"
+    link="$(grep -o 'omp join "[^"]*"' <<<"$pane" | tail -1 | sed 's/^omp join "//; s/"$//')"
+    if [ -n "$link" ]; then
+        printf 'join from another machine:\n  omp join "%s"\n\n' "$link"
+        printf 'or in a browser:\n  https://my.omp.sh/#%s\n' "$link"
+        exit 0
+    fi
+done
+
+# status/stop and any error path: show the tail of the pane rather than
+# pretending we found a link.
+echo "--- no join link in pane; last output was: ---" >&2
+tmux capture-pane -p -t "$TARGET" | grep -v '^$' | tail -12 >&2
+exit 1

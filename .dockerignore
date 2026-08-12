@@ -1,0 +1,7 @@
+# Keep the build context to the Dockerfile + entrypoint only. This is what
+# makes `context: <git-url>#<branch>:docker/omp-standalone` cheap on the other
+# machines — nothing from the repo tree is needed to build the image.
+*
+!Dockerfile
+!entrypoint.sh
+!omp-collab

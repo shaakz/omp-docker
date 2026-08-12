@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Host-side wrapper so the stack can be driven from any directory.
+#
+# Optional: symlink onto your PATH once per machine —
+#   ln -s ~/oh-my-pi/docker/omp-standalone/omp-ctl ~/.local/bin/omp-ctl
+#
+#   omp-ctl attach          # attach to the agent TUI (ctrl-b d to detach)
+#   omp-ctl collab [view]   # print a join link
+#   omp-ctl status          # collab link + participants
+#   omp-ctl up | down | restart | logs | shell
+set -euo pipefail
+
+# Resolve through symlinks so PATH installs still find the compose file.
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+    dir="$(cd -P "$(dirname "$SELF")" && pwd)"
+    SELF="$(readlink "$SELF")"
+    [[ $SELF != /* ]] && SELF="$dir/$SELF"
+done
+STACK_DIR="$(cd -P "$(dirname "$SELF")" && pwd)"
+
+# An array, not a function: `exec` cannot run a shell function.
+DC=(docker compose -f "${STACK_DIR}/docker-compose.yml")
+
+case "${1:-attach}" in
+    attach)  exec "${DC[@]}" exec -u omp omp tmux attach -t "${OMP_TMUX_SESSION:-omp}" ;;
+    collab)  shift; exec "${DC[@]}" exec -u omp omp omp-collab "$@" ;;
+    status)  exec "${DC[@]}" exec -u omp omp omp-collab status ;;
+    shell)   exec "${DC[@]}" exec -u omp omp bash ;;
+    up)      exec "${DC[@]}" up -d ;;
+    down)    exec "${DC[@]}" down ;;
+    restart) exec "${DC[@]}" restart ;;
+    logs)    shift; exec "${DC[@]}" logs "$@" ;;
+    *)       exec "${DC[@]}" "$@" ;;
+esac

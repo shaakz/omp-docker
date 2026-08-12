@@ -1,0 +1,84 @@
+# oh-my-pi (`omp`) standalone stack.
+#
+# All per-machine configuration lives in the .env file next to this one; the
+# compose file itself is byte-identical on every host. See .env.example.
+#
+#   docker compose up -d
+#   docker compose exec omp tmux attach -t omp     # drive the agent
+#
+# omp's approval mode defaults to yolo (no confirmation prompts), so the
+# container is the isolation boundary: the only host path it can touch is
+# WORKSPACE_DIR, and no docker socket is mounted.
+
+# Pinned so the project (and therefore the `omp-state` volume) does not depend
+# on the directory this file happens to be cloned into. Without it, moving or
+# renaming the checkout silently orphans your sessions and settings.
+name: omp-standalone
+
+services:
+  omp:
+    image: ${OMP_IMAGE:-omp-standalone:17.2.15}
+    build:
+      # Replace with the git form to build without a local clone:
+      #   context: https://github.com/<you>/oh-my-pi.git#<branch>:docker/omp-standalone
+      context: .
+      args:
+        OMP_VERSION: ${OMP_VERSION:-17.2.15}
+    container_name: ${OMP_NAME:-omp}
+    hostname: ${OMP_HOSTNAME:-omp}
+    restart: unless-stopped
+    # No `init: true` — the image's entrypoint is already tini, and compose's
+    # init would displace it to a non-PID-1 slot where subreaping is disabled.
+    stop_grace_period: 30s
+
+    environment:
+      # Host identity for files written into /workspace.
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+
+      # Model backend. Rendered into ~/.omp/agent/models.yml at container start.
+      OMP_MODEL_PROVIDER: ${OMP_MODEL_PROVIDER:-lan}
+      OMP_MODEL_BASE_URL: ${OMP_MODEL_BASE_URL:-}
+      OMP_MODEL_ID: ${OMP_MODEL_ID:-}
+      OMP_MODEL_NAME: ${OMP_MODEL_NAME:-}
+      OMP_MODEL_API: ${OMP_MODEL_API:-openai-completions}
+      OMP_MODEL_CONTEXT: ${OMP_MODEL_CONTEXT:-131072}
+      OMP_MODEL_MAX_TOKENS: ${OMP_MODEL_MAX_TOKENS:-32768}
+      OMP_MODEL_REASONING: ${OMP_MODEL_REASONING:-false}
+      # Selector handed to `omp --model`, e.g. lan/<model-id>.
+      OMP_MODEL: ${OMP_MODEL:-}
+      OMP_ARGS: ${OMP_ARGS:-}
+      # Skip the first-run provider-login wizard: the LAN endpoint is keyless,
+      # so there is nothing to sign into. Set to 0 to get the wizard back.
+      OMP_SKIP_SETUP: ${OMP_SKIP_SETUP:-1}
+
+      # Other LAN endpoints omp can auto-discover, keyless. Leave empty to skip.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      LLAMA_CPP_BASE_URL: ${LLAMA_CPP_BASE_URL:-}
+      LM_STUDIO_BASE_URL: ${LM_STUDIO_BASE_URL:-}
+
+      # Escape hatch if you ever want a hosted provider — no rebuild needed.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
+      GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-}
+      GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-}
+      TERM: xterm-256color
+      # Without this the container runs UTC and the agent's sense of time —
+      # plus any timestamp it writes into /workspace — is offset from the host.
+      TZ: ${TZ:-Europe/Stockholm}
+
+    # Lets the container reach services on the host itself, for the case where
+    # an inference endpoint is local rather than elsewhere on the LAN.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    volumes:
+      # The agent's entire reach into the host.
+      - ${WORKSPACE_DIR:?set WORKSPACE_DIR in .env}:/workspace
+      # Sessions, settings, agent.db, history. Machine-local by design —
+      # holds SQLite DBs and unix sockets, so never share it over NFS.
+      - omp-state:/home/omp/.omp
+
+volumes:
+  omp-state:
