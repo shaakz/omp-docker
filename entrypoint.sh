@@ -76,6 +76,24 @@ providers:
           cacheWrite: 0
 YAML
     log "wrote ${AGENT_DIR}/models.yml (${provider}/${OMP_MODEL_ID})"
+
+    # OMP_MODEL_ID is sent verbatim as the request's `model` field, so it has to
+    # match what the server advertises exactly — a near-miss (dropping an
+    # org/ prefix, say) only shows up as a 404 mid-conversation, long after
+    # startup looked healthy. Check it here instead, non-fatally: the endpoint
+    # may legitimately not be up yet.
+    served="$(curl -fsS --max-time 5 "${OMP_MODEL_BASE_URL%/}/models" 2>/dev/null \
+        | tr ',' '\n' | grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' \
+        | sed 's/.*"\([^"]*\)"$/\1/' || true)"
+    if [ -z "$served" ]; then
+        log "WARNING: could not list models at ${OMP_MODEL_BASE_URL} — endpoint down or unreachable from this container?"
+    elif ! grep -qxF "$OMP_MODEL_ID" <<<"$served"; then
+        log "WARNING: OMP_MODEL_ID='${OMP_MODEL_ID}' is not served by ${OMP_MODEL_BASE_URL}."
+        log "         requests will fail with 404. ids actually served:"
+        while IFS= read -r id; do log "           ${id}"; done <<<"$served"
+    else
+        log "model '${OMP_MODEL_ID}' confirmed served by ${OMP_MODEL_BASE_URL}"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -85,8 +103,16 @@ fi
 if tmux has-session -t "$SESSION" 2>/dev/null; then
     log "tmux session '${SESSION}' already running"
 else
+    # Default the selector to <provider>/<id> rather than making you repeat the
+    # model id in a second variable — writing OMP_MODEL by hand invites a
+    # mismatch with OMP_MODEL_ID, or a missing provider prefix.
+    model="${OMP_MODEL:-}"
+    if [ -z "$model" ] && [ -n "${OMP_MODEL_ID:-}" ]; then
+        model="${OMP_MODEL_PROVIDER:-lan}/${OMP_MODEL_ID}"
+    fi
+
     omp_cmd=(omp)
-    [ -n "${OMP_MODEL:-}" ] && omp_cmd+=(--model "${OMP_MODEL}")
+    [ -n "$model" ] && omp_cmd+=(--model "$model")
     # shellcheck disable=SC2206
     [ -n "${OMP_ARGS:-}" ] && omp_cmd+=(${OMP_ARGS})
 
