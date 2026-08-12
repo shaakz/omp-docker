@@ -98,27 +98,37 @@ Alternative path, no relay: `ssh <host> -t 'docker exec -u omp -it omp tmux atta
 
 ## Replicating across machines
 
-`docker-compose.yml` is identical on every host; only `.env` differs. Per machine,
-set `WORKSPACE_DIR`, `PUID`/`PGID`, and a distinct `OMP_HOSTNAME` (it identifies
-the machine in collab sessions).
+A new machine needs **two files and nothing else** — no clone, no registry:
 
-To build without cloning the repo, swap the build context for the git form:
-
-```yaml
-build:
-  context: https://github.com/<you>/oh-my-pi.git#<branch>:docker/omp-standalone
+```sh
+mkdir omp && cd omp
+curl -fsSL -O https://raw.githubusercontent.com/shaakz/omp-docker/main/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/shaakz/omp-docker/main/.env.example -o .env
+$EDITOR .env          # WORKSPACE_DIR, PUID/PGID, OMP_HOSTNAME, model endpoint
+docker compose up -d
 ```
 
-This works because the image pulls omp from npm — nothing from the repo tree is
-needed to build it, and `.dockerignore` keeps the context to `Dockerfile` +
-`entrypoint.sh`.
+`build.context` defaults to this public repo, so docker clones it at build time.
+On a machine where you edit these files locally, set `OMP_BUILD_CONTEXT=.` in
+`.env` to build from the working copy instead.
 
-Note this directory lives inside an upstream checkout (`can1357/oh-my-pi`), so
-keep it on your own branch or fork to survive `git pull`.
+For **Dockhand**: paste `docker-compose.yml` as the stack and supply the same
+variables as the stack's environment. No build context to ship, no registry
+credentials to configure.
 
-Since `/collab` is outbound-only, joining from your Mac is identical regardless
-of which machine is running the stack — deploy to all of them and start the one
-you want.
+Per machine, change only: `WORKSPACE_DIR`, `PUID`/`PGID`, `TZ`, `OMP_HOSTNAME`
+(identifies the host in collab sessions), and the model endpoint.
+
+Notes:
+
+- The project name is pinned via `name:` in the compose file, so the `omp-state`
+  volume does not depend on the directory you cloned into — the checkout can be
+  moved or renamed without orphaning sessions.
+- Builds work on x86_64 and arm64: omp and its native addon both ship prebuilt
+  per-platform npm packages, so the image is architecture-agnostic.
+- Since `/collab` is outbound-only, joining from another machine is identical
+  regardless of which host runs the stack. Deploy everywhere, start the one you
+  want.
 
 ## Troubleshooting
 
