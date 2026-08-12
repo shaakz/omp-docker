@@ -15,6 +15,18 @@ SESSION="${OMP_TMUX_SESSION:-omp}"
 TARGET="${SESSION}:agent"
 MODE="${1:-}"
 
+# Anything unrecognised would be forwarded to /collab as a *relay address*
+# ("Invalid relay URL: wss://[view]"), so reject it here rather than letting a
+# typo decide which server your session is shared through.
+case "$MODE" in
+    ""|view|status|stop) ;;
+    *://*|*.*) ;;   # explicit relay host or URL
+    *)
+        echo "omp-collab: unknown argument '${MODE}'" >&2
+        echo "  usage: omp-collab [view|status|stop|<relay-host-or-url>]" >&2
+        exit 2 ;;
+esac
+
 if ! tmux has-session -t "$SESSION" 2>/dev/null; then
     echo "no tmux session '${SESSION}' — is the container still starting?" >&2
     exit 1

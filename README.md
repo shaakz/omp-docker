@@ -37,7 +37,7 @@ existed at login, so after creating it either log out and back in or run
 
 ```sh
 omp-ctl attach          # attach to the TUI (ctrl-b d to detach)
-omp-ctl collab [view]   # print a join link
+omp-ctl collab          # print a join link (add "view" for read-only)
 omp-ctl status          # link + participants
 omp-ctl shell | logs | restart | stop | start | ps
 omp-ctl up | down       # these two need the compose file
