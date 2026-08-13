@@ -157,8 +157,40 @@ Git hosting is self-hosted Forgejo${FORGEJO_WEB_URL:+ at ${FORGEJO_WEB_URL}}, no
 - Use plain \`git\`. The \`gh\` CLI only speaks the GitHub API and does not work
   against Forgejo — no \`gh repo create\`, no \`gh pr create\`.
 - Only use github.com when explicitly asked to.
-<!-- omp-docker:end -->
 BLOCKEOF
+
+    # The REST API 401s anonymously and hides private repos, so the agent can
+    # only use it when a token exists. Reference the variable, never the value:
+    # this file is injected into the model's context.
+    if [ -n "${FORGEJO_TOKEN:-}" ]; then
+        # Quoted delimiter: this is markdown full of backticks and $VAR
+        # references that must reach the file verbatim. An expanding heredoc
+        # would run the curl and the backticked commands at boot — and splice
+        # the token's value into a file that goes into the model's context.
+        # The one substitution needed is done afterwards, on a placeholder.
+        cat >> "$BLOCK" <<'BLOCKEOF'
+
+### Forgejo API
+
+Anonymous API requests return 401 and private repositories are invisible, so
+authenticate with the token held in the FORGEJO_TOKEN environment variable.
+Pass it as a header, never in the URL where it would land in logs and shell
+history:
+
+```sh
+curl -sS -H "Authorization: token $FORGEJO_TOKEN" __WEB__/api/v1/user/repos
+```
+
+- List your repositories, private included: `GET /api/v1/user/repos?limit=50`
+- A single repository: `GET /api/v1/repos/<owner>/<repo>`
+- Full endpoint reference: `__WEB__/api/swagger`
+
+`git` itself does not need the token — SSH already handles clone, pull and push.
+BLOCKEOF
+        sed -i "s|__WEB__|${FORGEJO_WEB_URL:-http://${FORGEJO_HOST}:3001}|g" "$BLOCK"
+    fi
+
+    printf '%s\n' '<!-- omp-docker:end -->' >> "$BLOCK"
 
     if [ ! -f "$AGENTS_MD" ]; then
         cp "$BLOCK" "$AGENTS_MD"

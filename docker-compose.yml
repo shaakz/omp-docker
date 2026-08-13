@@ -76,6 +76,11 @@ services:
       FORGEJO_SSH_PORT: ${FORGEJO_SSH_PORT:-222}
       FORGEJO_WEB_URL: ${FORGEJO_WEB_URL:-}
       FORGEJO_SSH_KEY_B64: ${FORGEJO_SSH_KEY_B64:-}
+      # Optional API token. Git works over SSH without it; this is only for the
+      # REST API, which 401s anonymously and hides private repos. Scope it in
+      # Forgejo — read:repository is enough to list, write:repository also lets
+      # a yolo-mode agent delete repositories.
+      FORGEJO_TOKEN: ${FORGEJO_TOKEN:-}
 
       GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-}
       GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-}
