@@ -9,6 +9,7 @@
 #   omp-ctl attach          # attach to the agent TUI (ctrl-b d to detach)
 #   omp-ctl collab [view]   # print a join link
 #   omp-ctl status          # collab link + participants
+#   omp-ctl ssh-key         # public key + fingerprint, to enrol in Forgejo
 #   omp-ctl shell | logs | restart | stop | start | ps
 #   omp-ctl up | down       # these two need the compose file (see below)
 #
@@ -75,6 +76,12 @@ case "$cmd" in
     shell)
         require_running
         exec docker exec -it -u "$USER_IN_CONTAINER" "$CONTAINER" bash ;;
+    ssh-key)
+        require_running
+        exec docker exec -u "$USER_IN_CONTAINER" "$CONTAINER" \
+            sh -c 'k=${OMP_STATE_DIR:-$HOME/.omp}/ssh/id_ed25519
+                   [ -f "$k" ] || { echo "no key yet — is FORGEJO_HOST set?" >&2; exit 1; }
+                   ssh-keygen -lf "$k"; ssh-keygen -y -f "$k" -P ""' ;;
     logs)
         exec docker logs "$@" "$CONTAINER" ;;
     restart|stop|start)

@@ -62,6 +62,74 @@ if command -v gh >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
+# Forgejo over SSH. Skipped entirely when FORGEJO_HOST is unset, so machines
+# that don't use it are unaffected.
+# ---------------------------------------------------------------------------
+if [ -n "${FORGEJO_HOST:-}" ]; then
+    SSH_DIR="${STATE_DIR}/ssh"
+    KEY="${SSH_DIR}/id_ed25519"
+    KNOWN_HOSTS="${SSH_DIR}/known_hosts"
+    FORGEJO_SSH_PORT="${FORGEJO_SSH_PORT:-222}"
+    mkdir -p "$SSH_DIR"; chmod 700 "$SSH_DIR"
+
+    # 1) .env is the source of truth when it carries a key: rewrite every boot.
+    # 2) else keep whatever is already in the volume.  3) else generate one.
+    if [ -n "${FORGEJO_SSH_KEY_B64:-}" ]; then
+        if printf '%s' "$FORGEJO_SSH_KEY_B64" | base64 -d > "${KEY}.tmp" 2>/dev/null && [ -s "${KEY}.tmp" ]; then
+            mv "${KEY}.tmp" "$KEY"; chmod 600 "$KEY"
+            ssh-keygen -y -f "$KEY" -P "" > "${KEY}.pub" 2>/dev/null || true
+            log "ssh: key loaded from FORGEJO_SSH_KEY_B64"
+        else
+            rm -f "${KEY}.tmp"
+            log "ssh: ERROR — FORGEJO_SSH_KEY_B64 is not valid base64; ignoring it"
+            log "ssh:         produce it with: base64 -w0 ~/.ssh/id_ed25519"
+        fi
+    fi
+    if [ ! -f "$KEY" ]; then
+        ssh-keygen -t ed25519 -N "" -C "omp@$(hostname)" -f "$KEY" >/dev/null 2>&1
+        chmod 600 "$KEY"
+        log "ssh: generated a new key — add this to ${FORGEJO_WEB_URL:-Forgejo} /user/settings/keys:"
+        log "ssh:   $(cat "${KEY}.pub")"
+    fi
+
+    # An encrypted key would block on a passphrase prompt that a headless agent
+    # can never answer, so say so rather than letting git hang later.
+    if ! ssh-keygen -y -P "" -f "$KEY" >/dev/null 2>&1; then
+        log "ssh: WARNING — the key is passphrase-protected; git over SSH will hang with no TTY to prompt on."
+        log "ssh:          use a key with no passphrase (ssh-keygen -p removes one)."
+    fi
+
+    # Written fresh each boot: $HOME is image-local, so this file does not
+    # survive a redeploy the way the state volume does.
+    mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"
+    cat > "$HOME/.ssh/config" <<SSHCFG
+Host forgejo ${FORGEJO_HOST}
+    HostName ${FORGEJO_HOST}
+    Port ${FORGEJO_SSH_PORT}
+    User git
+    IdentityFile ${KEY}
+    IdentitiesOnly yes
+    UserKnownHostsFile ${KNOWN_HOSTS}
+    StrictHostKeyChecking accept-new
+SSHCFG
+    chmod 600 "$HOME/.ssh/config"
+
+    # accept-new still trusts whatever answers first; seeding known_hosts from a
+    # scan means it never has to. Non-fatal — the n150 may simply be down.
+    touch "$KNOWN_HOSTS"
+    if ! grep -q "\[${FORGEJO_HOST}\]:${FORGEJO_SSH_PORT}" "$KNOWN_HOSTS" 2>/dev/null; then
+        if ssh-keyscan -T 5 -p "$FORGEJO_SSH_PORT" "$FORGEJO_HOST" >> "$KNOWN_HOSTS" 2>/dev/null \
+           && grep -q "\[${FORGEJO_HOST}\]:${FORGEJO_SSH_PORT}" "$KNOWN_HOSTS"; then
+            log "ssh: seeded known_hosts for ${FORGEJO_HOST}:${FORGEJO_SSH_PORT}"
+        else
+            log "ssh: WARNING — could not reach ${FORGEJO_HOST}:${FORGEJO_SSH_PORT} to seed known_hosts"
+        fi
+    fi
+
+    log "ssh: $(ssh-keygen -lf "$KEY" 2>/dev/null || echo 'key unreadable') → git@${FORGEJO_HOST}:${FORGEJO_SSH_PORT}"
+fi
+
+# ---------------------------------------------------------------------------
 # models.yml, templated from the environment on every boot so that changing the
 # model is a .env edit + `docker compose up -d`, never an image rebuild.
 #

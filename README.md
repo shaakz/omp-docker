@@ -151,6 +151,47 @@ specific repositories, skip the browser login and set `GH_TOKEN` in `.env` to a
 fine-grained PAT scoped to just those repos with an expiry; the same credential
 helper picks it up. Deploy keys are narrower still, but rule out the GitHub API.
 
+## Forgejo / LAN git over SSH
+
+Set `FORGEJO_HOST` (and optionally `FORGEJO_SSH_PORT`, default `222`) and the
+container configures SSH for it on every boot. Leave `FORGEJO_HOST` unset and
+none of this happens.
+
+The key comes from one of three places, in order:
+
+1. `FORGEJO_SSH_KEY_B64` in `.env` — `base64 -w0 ~/.ssh/id_ed25519`. One value,
+   same on every machine. Rewritten each boot, so `.env` stays authoritative.
+2. Whatever key is already in the state volume.
+3. Otherwise a fresh ed25519 key, whose public half is logged for enrolment.
+
+Enrol the public key once at `<FORGEJO_WEB_URL>/user/settings/keys`:
+
+```sh
+omp-ctl ssh-key      # fingerprint + public key
+```
+
+Remotes then look like:
+
+```
+ssh://git@192.168.1.157:222/<owner>/<repo>.git
+```
+
+`known_hosts` is seeded from `ssh-keyscan` at boot and `StrictHostKeyChecking`
+is `accept-new`, because the default (`ask`) would leave a headless agent
+hanging on a prompt it cannot answer. The key must have **no passphrase** for
+the same reason; the entrypoint warns loudly if it does.
+
+Two caveats worth knowing:
+
+- **The agent can read the key** — from the file or, when supplied that way,
+  from its own environment. An env var is additionally visible in `docker
+  inspect` and inherited by every subprocess. A shared key also means revoking
+  it revokes every machine at once; per-machine generated keys revoke
+  independently.
+- **`gh` does not speak to Forgejo.** It is GitHub-only, so Forgejo work is
+  clone/pull/push. No `gh pr create` against Forgejo — that would need the `tea`
+  CLI, which is not installed.
+
 ## Replicating across machines
 
 A new machine needs **two files and nothing else** — no clone, no registry:
