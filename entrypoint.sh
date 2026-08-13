@@ -132,6 +132,51 @@ SSHCFG
     fi
 
     log "ssh: $(ssh-keygen -lf "$KEY" 2>/dev/null || echo 'key unreadable') → git@${FORGEJO_HOST}:${FORGEJO_SSH_PORT}"
+
+    # -----------------------------------------------------------------------
+    # AGENTS.md — omp loads this into every session as user context, so the
+    # agent knows git lives on Forgejo rather than reaching for GitHub habits.
+    #
+    # Only the block between the markers is managed: it is re-rendered on every
+    # boot so it can't go stale when FORGEJO_HOST changes, while anything you
+    # write outside it is preserved untouched.
+    # -----------------------------------------------------------------------
+    AGENTS_MD="${AGENT_DIR}/AGENTS.md"
+    OWNER="${FORGEJO_OWNER:-${GIT_AUTHOR_NAME:-<owner>}}"
+    BLOCK="$(mktemp)"
+    cat > "$BLOCK" <<BLOCKEOF
+<!-- omp-docker:begin — generated on container start; edits inside are overwritten -->
+## Version control
+
+Git hosting is self-hosted Forgejo${FORGEJO_WEB_URL:+ at ${FORGEJO_WEB_URL}}, not GitHub.
+
+- Remote URL form: \`ssh://git@${FORGEJO_HOST}:${FORGEJO_SSH_PORT}/${OWNER}/<repo>.git\`
+- SSH auth is already configured in this container. No tokens, no logins.
+- \`git push -u origin main\` against a remote that does not exist yet creates
+  the repository (push-to-create). New repos are private by default.
+- Use plain \`git\`. The \`gh\` CLI only speaks the GitHub API and does not work
+  against Forgejo — no \`gh repo create\`, no \`gh pr create\`.
+- Only use github.com when explicitly asked to.
+<!-- omp-docker:end -->
+BLOCKEOF
+
+    if [ ! -f "$AGENTS_MD" ]; then
+        cp "$BLOCK" "$AGENTS_MD"
+        log "agents: seeded ${AGENTS_MD}"
+    elif grep -q "omp-docker:begin" "$AGENTS_MD"; then
+        # Replace the managed block in place, leaving surrounding text alone.
+        awk -v blockfile="$BLOCK" '
+            /omp-docker:begin/ { if (!done) { while ((getline l < blockfile) > 0) print l; done = 1 } skip = 1; next }
+            /omp-docker:end/   { skip = 0; next }
+            !skip              { print }
+        ' "$AGENTS_MD" > "${AGENTS_MD}.tmp" && mv "${AGENTS_MD}.tmp" "$AGENTS_MD"
+        log "agents: refreshed the managed block in ${AGENTS_MD}"
+    else
+        # A hand-written file with no markers: append rather than overwrite.
+        { printf '\n'; cat "$BLOCK"; } >> "$AGENTS_MD"
+        log "agents: appended a managed block to your existing ${AGENTS_MD}"
+    fi
+    rm -f "$BLOCK"
 fi
 
 # ---------------------------------------------------------------------------

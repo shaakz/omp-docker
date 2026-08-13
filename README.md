@@ -219,6 +219,7 @@ authored agents/commands on several machines, sync just those subdirectories
 
 ## Forgejo / LAN git over SSH
 
+
 Set `FORGEJO_HOST` (and optionally `FORGEJO_SSH_PORT`, default `222`) and the
 container configures SSH for it on every boot. Leave `FORGEJO_HOST` unset and
 none of this happens.
@@ -257,6 +258,30 @@ Two caveats worth knowing:
 - **`gh` does not speak to Forgejo.** It is GitHub-only, so Forgejo work is
   clone/pull/push. No `gh pr create` against Forgejo — that would need the `tea`
   CLI, which is not installed.
+
+### The agent is told about Forgejo automatically
+
+Nothing about this setup is visible to the agent by default — it sees `git` and
+`gh` and will reach for GitHub habits. So when `FORGEJO_HOST` is set, the
+entrypoint maintains a block in `~/.omp/agent/AGENTS.md`, which omp loads into
+every session as user context:
+
+```markdown
+<!-- omp-docker:begin — generated on container start; edits inside are overwritten -->
+## Version control
+Git hosting is self-hosted Forgejo at ..., not GitHub.
+- Remote URL form: ssh://git@<host>:<port>/<owner>/<repo>.git
+...
+<!-- omp-docker:end -->
+```
+
+Only the marked block is managed. It is re-rendered on every boot, so it cannot
+go stale when the host or port changes, and anything you write outside it is
+left alone. If you already have an `AGENTS.md` without the markers, the block is
+appended rather than overwriting your file. `FORGEJO_OWNER` sets the owner in
+the example URL (defaults to `GIT_AUTHOR_NAME`).
+
+Start a new session to pick up changes — context files are read at session open.
 
 ## Replicating across machines
 
