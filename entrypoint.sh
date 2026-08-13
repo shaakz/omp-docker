@@ -92,9 +92,14 @@ if [ -n "${FORGEJO_HOST:-}" ]; then
         log "ssh:   $(cat "${KEY}.pub")"
     fi
 
-    # An encrypted key would block on a passphrase prompt that a headless agent
-    # can never answer, so say so rather than letting git hang later.
-    if ! ssh-keygen -y -P "" -f "$KEY" >/dev/null 2>&1; then
+    # `ssh-keygen -y` fails for two very different reasons — the file is a
+    # public key, or it is an encrypted private key — and reporting the wrong
+    # one sends you chasing a passphrase that was never set. Distinguish them:
+    # only a private key carries a "PRIVATE KEY" PEM header.
+    if ! grep -q "PRIVATE KEY" "$KEY" 2>/dev/null; then
+        log "ssh: ERROR — that is a PUBLIC key, not a private one. SSH cannot authenticate with it."
+        log "ssh:         base64 the private half instead: base64 -w0 ~/.ssh/id_ed25519   (no .pub)"
+    elif ! ssh-keygen -y -P "" -f "$KEY" >/dev/null 2>&1; then
         log "ssh: WARNING — the key is passphrase-protected; git over SSH will hang with no TTY to prompt on."
         log "ssh:          use a key with no passphrase (ssh-keygen -p removes one)."
     fi
