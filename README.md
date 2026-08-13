@@ -297,6 +297,44 @@ the example URL (defaults to `GIT_AUTHOR_NAME`).
 
 Start a new session to pick up changes — context files are read at session open.
 
+## Versioning and upgrades
+
+The image installs a pinned release: `bun install -g @oh-my-pi/pi-coding-agent@${OMP_VERSION}`.
+
+**The in-TUI "Run: `omp update`" notice does not apply here.** Inside the
+container omp lives at `/opt/bun/install/global/...` owned by root while the
+agent runs as uid 1000, so it cannot update itself — and anything it did manage
+to write would sit in the container's writable layer and vanish on the next
+redeploy. Treat the notice as "time to bump `OMP_VERSION`".
+
+Upgrading is one variable:
+
+```sh
+OMP_VERSION=17.3.0      # in .env / the Dockhand stack env
+```
+
+then rebuild and redeploy. The image tag follows `OMP_VERSION` automatically, so
+you get `omp-standalone:17.3.0` rather than a different omp hiding under the old
+tag. If your `.env` still sets `OMP_IMAGE` explicitly, remove that line or the
+tag stays put.
+
+**Do all machines together, including any client you `omp join` from.** Collab
+negotiates a protocol version and rejects mismatched builds, so a half-upgraded
+fleet means `omp-join` fails with a protocol error. Update the Mac's omp
+(`brew upgrade omp`) in the same pass.
+
+Why pin rather than track `latest`:
+
+- **Collab compatibility** — machines built on different days would silently
+  drift apart and stop being able to join each other.
+- **Reproducibility** — the same compose file and version produce the same image
+  on every host, whenever it is built.
+- **Rollback** — if a release regresses you can put the old number back.
+
+One caveat on rolling back: a newer omp may migrate `agent.db` in the state
+volume, and an older build will not necessarily read the migrated schema. Snapshot
+the state directory before a big jump if the sessions matter.
+
 ## Replicating across machines
 
 A new machine needs **two files and nothing else** — no clone, no registry:

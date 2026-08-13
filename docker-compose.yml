@@ -17,7 +17,10 @@ name: omp-standalone
 
 services:
   omp:
-    image: ${OMP_IMAGE:-omp-standalone:17.2.15}
+    # Tag follows OMP_VERSION, so bumping the version alone gives you a new
+    # image tag rather than silently rebuilding a different omp under the old
+    # one. Override OMP_IMAGE only to use a registry or a custom name.
+    image: ${OMP_IMAGE:-omp-standalone:${OMP_VERSION:-17.2.15}}
     build:
       # Defaults to the public repo, so this file plus a .env is everything a
       # new machine needs — no clone required. Set OMP_BUILD_CONTEXT=. in .env
