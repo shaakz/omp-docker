@@ -32,12 +32,34 @@ command -v omp >/dev/null 2>&1 || {
     exit 127
 }
 
+# `ssh host cmd` runs a non-interactive, non-login shell, which sources neither
+# ~/.profile nor ~/.bashrc — so ~/.local/bin is not on PATH there even though it
+# is when you log in. Set it explicitly rather than requiring remote shell
+# config. OMP_CTL_PATH overrides for an install somewhere unusual.
+# ${PATH:+:$PATH} rather than :$PATH — an empty PATH would otherwise leave a
+# trailing colon, which bash reads as "the current directory".
+remote_cmd='PATH="$HOME/.local/bin:/usr/local/bin${PATH:+:$PATH}"; export PATH
+if ! command -v '"${OMP_CTL_PATH:-omp-ctl}"' >/dev/null 2>&1; then
+    echo "omp-ctl is not installed on this host" >&2; exit 127
+fi
+'"${OMP_CTL_PATH:-omp-ctl}"' collab-link'
+
 # -n so ssh doesn't consume this terminal's stdin; `omp join` needs it.
-link=$(ssh -n "$host" "omp-ctl collab-link ${mode}") || {
+set +e
+link=$(ssh -n "$host" "$remote_cmd ${mode}")
+rc=$?
+set -e
+
+if [ "$rc" -eq 127 ]; then
+    echo "omp-join: omp-ctl is not installed on '${host}'. Install it there:" >&2
+    echo "  ssh ${host} 'mkdir -p ~/.local/bin && curl -fsSL -o ~/.local/bin/omp-ctl \\" >&2
+    echo "    https://raw.githubusercontent.com/shaakz/omp-docker/main/omp-ctl && chmod +x ~/.local/bin/omp-ctl'" >&2
+    exit 1
+elif [ "$rc" -ne 0 ]; then
     echo "omp-join: could not get a link from '${host}'" >&2
     echo "  is the stack running there?  ssh ${host} omp-ctl ps" >&2
     exit 1
-}
+fi
 
 if [ -z "$link" ]; then
     echo "omp-join: '${host}' returned an empty link" >&2

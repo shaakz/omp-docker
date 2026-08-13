@@ -129,12 +129,26 @@ omp-join n150 view     # read-only
 ```
 
 It runs `omp-ctl collab-link` on the remote host — which prints the link alone,
-and starts a session if none is sharing — then hands it to `omp join`. Roll your
-own with the same primitive if you prefer:
+and starts a session if none is sharing — then hands it to `omp join`.
+
+**`omp-ctl` must be installed on each machine running a stack**, not just the
+one you drive from:
 
 ```sh
-omp join "$(ssh 5090 omp-ctl collab-link)"
+ssh 5090 'mkdir -p ~/.local/bin && curl -fsSL -o ~/.local/bin/omp-ctl \
+  https://raw.githubusercontent.com/shaakz/omp-docker/main/omp-ctl && chmod +x ~/.local/bin/omp-ctl'
 ```
+
+Rolling your own needs one extra thing: `ssh host cmd` runs a non-interactive,
+non-login shell, which sources neither `~/.profile` nor `~/.bashrc`, so
+`~/.local/bin` is **not** on PATH there even though it is when you log in —
+hence `omp-ctl: command not found`. Set it explicitly:
+
+```sh
+omp join "$(ssh 5090 'PATH=$HOME/.local/bin:$PATH omp-ctl collab-link')"
+```
+
+`omp-join` already does this for you.
 
 Deliberately over SSH rather than an HTTP endpoint: the join link is a full
 credential for a yolo-mode agent, so anything serving it unauthenticated on the
