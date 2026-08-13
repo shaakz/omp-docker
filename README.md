@@ -112,6 +112,8 @@ brew install can1357/tap/omp     # or: curl -fsSL https://omp.sh/install | sh
 omp join "<link>"
 ```
 
+…or just open `https://my.omp.sh/#<link>` in a browser, with nothing installed.
+
 ### One-command join
 
 With several machines running stacks, fetching the link by hand gets old.
@@ -138,8 +140,6 @@ Deliberately over SSH rather than an HTTP endpoint: the join link is a full
 credential for a yolo-mode agent, so anything serving it unauthenticated on the
 LAN is an unauthenticated remote shell. SSH reuses keys you already trust and
 leaves nothing listening.
-
-…or just open `https://my.omp.sh/#<link>` in a browser, with nothing installed.
 
 Two constraints: `omp join` requires a TTY on both ends, and host and guest must
 speak the same collab protocol version — so keep `OMP_VERSION` the same on both.
