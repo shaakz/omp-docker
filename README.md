@@ -151,6 +151,44 @@ specific repositories, skip the browser login and set `GH_TOKEN` in `.env` to a
 fine-grained PAT scoped to just those repos with an expiry; the same credential
 helper picks it up. Deploy keys are narrower still, but rule out the GitHub API.
 
+## Bringing your own agents, commands and context
+
+The agent's state directory (`/home/omp/.omp`) holds both machine-local data —
+`agent.db`, session transcripts, history, unix sockets — and the things you
+author: `agent/AGENTS.md`, `agent/RULES.md`, and the `agent/{agents,commands,
+prompts,skills,themes,memories}` directories.
+
+By default it is the named volume `omp-state`, which is called the same on every
+machine because the compose project name is pinned. To get a directory you can
+edit directly — filebrowser, an editor, backups — point `OMP_STATE_MOUNT` at an
+absolute host path:
+
+```sh
+OMP_STATE_MOUNT=/home/shaakz/omp-state
+```
+
+Compose treats a leading `/` as a bind mount, so no other change is needed. The
+entrypoint chowns it to `PUID`/`PGID`, so the directory and everything in it
+comes out owned by you on the host, and files you drop in are visible to the
+agent immediately (`agent/AGENTS.md` is loaded into every new session — see
+`docs/context-files.md` upstream).
+
+**Migrating an existing named volume** to a host path, so you don't lose your
+sessions, `gh` token and settings:
+
+```sh
+omp-ctl down
+docker run --rm -v omp-standalone_omp-state:/from -v /home/shaakz/omp-state:/to \
+  alpine sh -c 'cp -a /from/. /to/'
+# set OMP_STATE_MOUNT in .env, then:
+omp-ctl up
+```
+
+Keep it machine-local either way. It contains SQLite databases and sockets, so
+it must not live on NFS or be sync'd live between machines. If you want your
+authored agents/commands on several machines, sync just those subdirectories
+(git, or a one-way copy), not the whole directory.
+
 ## Forgejo / LAN git over SSH
 
 Set `FORGEJO_HOST` (and optionally `FORGEJO_SSH_PORT`, default `222`) and the

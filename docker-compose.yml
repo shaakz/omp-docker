@@ -89,9 +89,16 @@ services:
     volumes:
       # The agent's entire reach into the host.
       - ${WORKSPACE_DIR:?set WORKSPACE_DIR in .env}:/workspace
-      # Sessions, settings, agent.db, history. Machine-local by design —
-      # holds SQLite DBs and unix sockets, so never share it over NFS.
-      - omp-state:/home/omp/.omp
+      # Sessions, settings, agent.db, history, and your own agents/commands/
+      # skills/AGENTS.md. Defaults to the named volume `omp-state`, which is
+      # called the same on every machine because the project name is pinned
+      # above. Set OMP_STATE_MOUNT to an absolute host path instead to get a
+      # directory you can browse and edit directly (filebrowser, an editor,
+      # backups) — compose treats a leading / as a bind mount.
+      #
+      # Either way this stays machine-local: it holds SQLite DBs and unix
+      # sockets, so don't put it on NFS or sync it live between machines.
+      - ${OMP_STATE_MOUNT:-omp-state}:/home/omp/.omp
 
 volumes:
   omp-state:
