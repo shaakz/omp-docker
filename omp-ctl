@@ -7,7 +7,8 @@
 #   chmod +x ~/.local/bin/omp-ctl
 #
 #   omp-ctl attach          # attach to the agent TUI (ctrl-b d to detach)
-#   omp-ctl collab [view]   # print a join link
+#   omp-ctl collab          # print a join link (add "view" for read-only)
+#   omp-ctl collab-link     # the link alone, for scripts
 #   omp-ctl status          # collab link + participants
 #   omp-ctl ssh-key         # public key + fingerprint, to enrol in Forgejo
 #   omp-ctl shell | logs | restart | stop | start | ps
@@ -70,6 +71,12 @@ case "$cmd" in
     collab)
         require_running
         exec docker exec -u "$USER_IN_CONTAINER" "$CONTAINER" omp-collab "$@" ;;
+    collab-link)
+        # Just the link on stdout, for piping. Starts the session if there
+        # isn't one, so this covers both "share" and "what's the link".
+        #   omp join "$(ssh 5090 omp-ctl collab-link)"
+        require_running
+        exec docker exec -u "$USER_IN_CONTAINER" "$CONTAINER" omp-collab --raw "$@" ;;
     status)
         require_running
         exec docker exec -u "$USER_IN_CONTAINER" "$CONTAINER" omp-collab status ;;

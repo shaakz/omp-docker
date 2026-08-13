@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Join the collab session running on another machine, in one command.
+#
+# Install on the machine you drive from (a Mac, a laptop — anywhere `omp` is
+# installed):
+#
+#   curl -fsSL -o ~/.local/bin/omp-join \
+#     https://raw.githubusercontent.com/shaakz/omp-docker/main/omp-join
+#   chmod +x ~/.local/bin/omp-join
+#
+#   omp-join 5090        # ssh host alias, or user@host
+#   omp-join n150 view   # join read-only
+#
+# It fetches the current link over SSH and hands it to `omp join`, so nothing
+# listens on a port and the join link — which is a full credential for a
+# yolo-mode agent — never crosses the network unauthenticated.
+#
+# If no session is sharing yet, the remote side starts one, so this works
+# equally as "share and join".
+set -euo pipefail
+
+host=${1:-}
+mode=${2:-}
+
+if [ -z "$host" ] || [ "$host" = "-h" ] || [ "$host" = "--help" ]; then
+    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+    exit 1
+fi
+
+command -v omp >/dev/null 2>&1 || {
+    echo "omp-join: omp is not installed here — brew install can1357/tap/omp" >&2
+    exit 127
+}
+
+# -n so ssh doesn't consume this terminal's stdin; `omp join` needs it.
+link=$(ssh -n "$host" "omp-ctl collab-link ${mode}") || {
+    echo "omp-join: could not get a link from '${host}'" >&2
+    echo "  is the stack running there?  ssh ${host} omp-ctl ps" >&2
+    exit 1
+}
+
+if [ -z "$link" ]; then
+    echo "omp-join: '${host}' returned an empty link" >&2
+    exit 1
+fi
+
+echo "joining ${host} …" >&2
+exec omp join "$link"

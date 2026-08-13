@@ -38,6 +38,7 @@ existed at login, so after creating it either log out and back in or run
 ```sh
 omp-ctl attach          # attach to the TUI (ctrl-b d to detach)
 omp-ctl collab          # print a join link (add "view" for read-only)
+omp-ctl collab-link     # the link alone, for scripts
 omp-ctl status          # link + participants
 omp-ctl shell | logs | restart | stop | start | ps
 omp-ctl up | down       # these two need the compose file
@@ -110,6 +111,33 @@ On the other machine:
 brew install can1357/tap/omp     # or: curl -fsSL https://omp.sh/install | sh
 omp join "<link>"
 ```
+
+### One-command join
+
+With several machines running stacks, fetching the link by hand gets old.
+`omp-join` does it over SSH — install it on whatever you drive from:
+
+```sh
+curl -fsSL -o ~/.local/bin/omp-join \
+  https://raw.githubusercontent.com/shaakz/omp-docker/main/omp-join
+chmod +x ~/.local/bin/omp-join
+
+omp-join 5090          # ssh alias or user@host
+omp-join n150 view     # read-only
+```
+
+It runs `omp-ctl collab-link` on the remote host — which prints the link alone,
+and starts a session if none is sharing — then hands it to `omp join`. Roll your
+own with the same primitive if you prefer:
+
+```sh
+omp join "$(ssh 5090 omp-ctl collab-link)"
+```
+
+Deliberately over SSH rather than an HTTP endpoint: the join link is a full
+credential for a yolo-mode agent, so anything serving it unauthenticated on the
+LAN is an unauthenticated remote shell. SSH reuses keys you already trust and
+leaves nothing listening.
 
 …or just open `https://my.omp.sh/#<link>` in a browser, with nothing installed.
 

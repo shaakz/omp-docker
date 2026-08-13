@@ -7,12 +7,23 @@
 #   docker compose exec -u omp omp omp-collab status   # participants
 #   docker compose exec -u omp omp omp-collab stop
 #
+#   omp-collab --raw [view]   # the link alone on stdout, for piping:
+#                             #   omp join "$(ssh host omp-ctl collab-link)"
+#
 # The room key lives only in the host process's memory, so every container
 # restart invalidates the previous link — run this again after one.
 set -euo pipefail
 
 SESSION="${OMP_TMUX_SESSION:-omp}"
 TARGET="${SESSION}:agent"
+
+# --raw: print nothing but the link on stdout, so callers can pipe it straight
+# into `omp join`. Every diagnostic goes to stderr in this mode.
+RAW=0
+if [ "${1:-}" = "--raw" ] || [ "${1:-}" = "-q" ]; then
+    RAW=1
+    shift
+fi
 MODE="${1:-}"
 
 # Anything unrecognised would be forwarded to /collab as a *relay address*
@@ -82,16 +93,27 @@ for i in $(seq 1 20); do
     fi
     link="$(extract_link "$pane")"
     if [ -n "$link" ]; then
-        printf 'join from another machine:\n  omp join "%s"\n\n' "$link"
-        printf 'or in a browser:\n  https://my.omp.sh/#%s\n' "$link"
+        if [ "$RAW" -eq 1 ]; then
+            printf '%s\n' "$link"
+        else
+            printf 'join from another machine:\n  omp join "%s"\n\n' "$link"
+            printf 'or in a browser:\n  https://my.omp.sh/#%s\n' "$link"
+        fi
         exit 0
     fi
 done
 
 # stop, or any error path: show what the pane actually says rather than
-# pretending we found a link. stdout, not stderr — `docker compose exec`
-# allocates a TTY and stderr routed through it can be swallowed.
-echo "no join link on screen — pane tail:"
-tmux capture-pane -p -t "$TARGET" | grep -v '^$' | tail -12
+# pretending we found a link. In --raw mode this must go to stderr so a caller
+# piping stdout into `omp join` gets an empty string, not a screenful of TUI.
+if [ "$RAW" -eq 1 ]; then
+    {
+        echo "omp-collab: no join link on screen — pane tail:"
+        tmux capture-pane -p -t "$TARGET" | grep -v '^$' | tail -12
+    } >&2
+else
+    echo "no join link on screen — pane tail:"
+    tmux capture-pane -p -t "$TARGET" | grep -v '^$' | tail -12
+fi
 exit 1
 exit 1
