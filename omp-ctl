@@ -78,10 +78,20 @@ case "$cmd" in
         exec docker exec -it -u "$USER_IN_CONTAINER" "$CONTAINER" bash ;;
     ssh-key)
         require_running
+        # -y needs to decrypt, so it fails on a passphrase-protected key even
+        # though -l can still read the fingerprint. Say which case it is rather
+        # than leaking "error in libcrypto".
         exec docker exec -u "$USER_IN_CONTAINER" "$CONTAINER" \
             sh -c 'k=${OMP_STATE_DIR:-$HOME/.omp}/ssh/id_ed25519
                    [ -f "$k" ] || { echo "no key yet — is FORGEJO_HOST set?" >&2; exit 1; }
-                   ssh-keygen -lf "$k"; ssh-keygen -y -f "$k" -P ""' ;;
+                   ssh-keygen -lf "$k"
+                   if ssh-keygen -y -P "" -f "$k" 2>/dev/null; then :
+                   elif [ -s "${k}.pub" ]; then cat "${k}.pub"
+                   else
+                     echo "key is passphrase-protected — unusable by a headless agent." >&2
+                     echo "supply a passphrase-less key, or unset FORGEJO_SSH_KEY_B64 to generate one." >&2
+                     exit 1
+                   fi' ;;
     logs)
         exec docker logs "$@" "$CONTAINER" ;;
     restart|stop|start)
