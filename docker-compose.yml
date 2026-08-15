@@ -93,7 +93,11 @@ services:
     # an inference endpoint is local rather than elsewhere on the LAN.
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
+    ports:
+      - "${OMP_PORT_1:-8085:8080}"
+      - "${OMP_PORT_2:-3005:3000}"
+      - "${OMP_PORT_3:-5005:5000}"
+      - 3847:3847
     volumes:
       # The agent's entire reach into the host.
       - ${WORKSPACE_DIR:?set WORKSPACE_DIR in .env}:/workspace
